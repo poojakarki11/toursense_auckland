@@ -1,0 +1,77 @@
+[
+  {
+    "place_id": "1",
+    "name": "Auckland Domain",
+    "lat": -36.8621,
+    "lng": 174.7770,
+    "category": "park",
+    "overall_sentiment": "positive",
+    "aspects": {
+      "service": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "price": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "facilities": { "score": 1, "label": "positive", "snippet": "clean bathrooms, well-maintained paths" },
+      "environment": { "score": 1, "label": "positive", "snippet": "beautiful trees, peaceful, great for walks" },
+      "product_quality": { "score": 0, "label": "not mentioned", "snippet": "" }
+    }
+  },
+  {
+    "place_id": "2",
+    "name": "SkyCity Auckland",
+    "lat": -36.8485,
+    "lng": 174.7633,
+    "category": "accommodation",
+    "overall_sentiment": "neutral",
+    "aspects": {
+      "service": { "score": -1, "label": "negative", "snippet": "front desk was slow and unhelpful" },
+      "price": { "score": -1, "label": "negative", "snippet": "overpriced for what you get" },
+      "facilities": { "score": 1, "label": "positive", "snippet": "gorgeous views, great pool area" },
+      "environment": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "product_quality": { "score": 0, "label": "not mentioned", "snippet": "" }
+    }
+  },
+  {
+    "place_id": "3",
+    "name": "The Grounds Café",
+    "lat": -36.8509,
+    "lng": 174.7645,
+    "category": "restaurant",
+    "overall_sentiment": "positive",
+    "aspects": {
+      "service": { "score": 1, "label": "positive", "snippet": "staff remembered our order, very friendly" },
+      "price": { "score": 1, "label": "positive", "snippet": "great value for portion size" },
+      "facilities": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "environment": { "score": 1, "label": "positive", "snippet": "cozy, quiet corner seating" },
+      "product_quality": { "score": 1, "label": "positive", "snippet": "best flat white I've had in Auckland" }
+    }
+  },
+  {
+    "place_id": "4",
+    "name": "Auckland War Memorial Museum",
+    "lat": -36.8598,
+    "lng": 174.7773,
+    "category": "librarymuseum",
+    "overall_sentiment": "positive",
+    "aspects": {
+      "service": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "price": { "score": -1, "label": "negative", "snippet": "entry fee felt steep for locals" },
+      "facilities": { "score": 1, "label": "positive", "snippet": "wheelchair accessible, clean and modern" },
+      "environment": { "score": 1, "label": "positive", "snippet": "stunning building, peaceful galleries" },
+      "product_quality": { "score": 1, "label": "positive", "snippet": "exhibits were well curated and informative" }
+    }
+  },
+  {
+    "place_id": "5",
+    "name": "Cornwall Park",
+    "lat": -36.8944,
+    "lng": 174.7833,
+    "category": "park",
+    "overall_sentiment": "negative",
+    "aspects": {
+      "service": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "price": { "score": 0, "label": "not mentioned", "snippet": "" },
+      "facilities": { "score": -1, "label": "negative", "snippet": "toilets were closed and poorly maintained" },
+      "environment": { "score": -1, "label": "negative", "snippet": "overcrowded and noisy on weekends" },
+      "product_quality": { "score": 0, "label": "not mentioned", "snippet": "" }
+    }
+  }
+]

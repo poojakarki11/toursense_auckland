@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TourSense</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+  <h1>Welcome to TourSense</h1>
+
+  <div id="filters">
+    <label><input type="checkbox" class="category-filter" value="park" checked> Park</label>
+    <label><input type="checkbox" class="category-filter" value="accommodation" checked> Accommodation</label>
+    <label><input type="checkbox" class="category-filter" value="restaurant" checked> Restaurant</label>
+    <label><input type="checkbox" class="category-filter" value="library_museum" checked> Library & museum</label>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f6f5f1;
+  color: #1f2422;
+  margin: 40px;
+}
+
+h1 {
+  color: #0f6e56;
+}
+
+#map {
+  height: 500px;
+  width: 100%;
+}
+
+.popup-card {
+  min-width: 200px;
+}
+.popup-category {
+  color: #666;
+  font-size: 0.85em;
+  text-transform: capitalize;
+  margin-top: -6px;
+}
+.aspect-row {
+  margin: 6px 0;
+}
+.snippet {
+  font-style: italic;
+  font-size: 0.85em;
+  color: #444;
+  margin: 2px 0 0 20px;
+}
