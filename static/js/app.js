@@ -33,16 +33,22 @@ function buildPopupContent(place) {
   html += `<p class="popup-category">${place.category}</p>`;
   html += `<div class="aspect-list">`;
 
-  for (const [aspect, data] of Object.entries(place.aspects)) {
-    if (data.label === "not mentioned") continue;
+  const mentionedAspects = Object.entries(place.aspects).filter(
+    ([_, data]) => data.label !== "not mentioned"
+  );
 
-    const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
-    html += `
-      <div class="aspect-row">
-        <span>${icon} ${aspect.replace("_", " ")}</span>
-        ${data.snippet ? `<p class="snippet">"${data.snippet}"</p>` : ""}
-      </div>
-    `;
+  if (mentionedAspects.length === 0) {
+    html += `<p class="no-data">No aspect data available yet.</p>`;
+  } else {
+    mentionedAspects.forEach(([aspect, data]) => {
+      const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
+      html += `
+        <div class="aspect-row">
+          <span>${icon} ${aspect.replace("_", " ")}</span>
+          ${data.snippet ? `<p class="snippet">"${data.snippet}"</p>` : ""}
+        </div>
+      `;
+    });
   }
 
   html += `</div></div>`;

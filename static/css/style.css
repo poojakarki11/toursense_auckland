@@ -63,3 +63,10 @@ html, body {
   color: #444;
   margin: 2px 0 0 20px;
 }
+
+.no-data {
+  font-size: 0.85em;
+  color: #888;
+  font-style: italic;
+  margin: 4px 0;
+}
