@@ -1,4 +1,5 @@
-const map = L.map("map").setView([-36.8485, 174.7633], 12);
+const map = L.map("map", { zoomControl: false }).setView([-36.8485, 174.7633], 12);
+L.control.zoom({ position: "topright" }).addTo(map);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
