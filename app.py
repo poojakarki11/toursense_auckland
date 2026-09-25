@@ -3,10 +3,16 @@ import psycopg2
 import psycopg2.extras
 import os
 from dotenv import load_dotenv
+from collections import defaultdict
 
 load_dotenv()
 
 app = Flask(__name__)
+
+POS_THRESHOLD = 0.15
+NEG_THRESHOLD = -0.15
+
+ASPECT_COLUMNS = ["service", "price_value", "facilities_access", "environment", "product_quality"]
 
 def get_db_connection():
     conn = psycopg2.connect(
@@ -17,6 +23,16 @@ def get_db_connection():
     )
     return conn
 
+def sentiment_label(value):
+    if value is None:
+        return "neutral"
+    value = float(value)
+    if value > POS_THRESHOLD:
+        return "positive"
+    if value < NEG_THRESHOLD:
+        return "negative"
+    return "neutral"
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -25,18 +41,66 @@ def index():
 def api_places():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     cur.execute("""
         SELECT p.place_id, p.place_name, p.category, p.address,
                p.latitude, p.longitude, p.google_rating, p.total_reviews,
-               ps.overall_sentiment, ps.service_mean, ps.price_value_mean,
-               ps.facilities_access_mean, ps.environment_mean, ps.product_quality_mean
+               ps.overall_sentiment
         FROM places p
         LEFT JOIN place_sentiment ps ON p.place_id = ps.place_id;
     """)
-    rows = cur.fetchall()
+    place_rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT place_id, review_text, review_rating, word_count,
+               service, price_value, facilities_access, environment, product_quality
+        FROM reviews;
+    """)
+    review_rows = cur.fetchall()
+
     cur.close()
     conn.close()
-    return jsonify(rows)
+
+    reviews_by_place = defaultdict(list)
+    for r in review_rows:
+        reviews_by_place[r["place_id"]].append(r)
+
+    places_out = []
+    for place in place_rows:
+        place_reviews = reviews_by_place.get(place["place_id"], [])
+        aspects = {}
+
+        for aspect in ASPECT_COLUMNS:
+            mentioned = [r for r in place_reviews if r[aspect] != 0]
+            if not mentioned:
+                aspects[aspect] = {"label": "not mentioned", "score": 0, "snippet": None}
+                continue
+
+            avg_val = sum(r[aspect] for r in mentioned) / len(mentioned)
+            label = sentiment_label(avg_val)
+            score = 1 if avg_val > 0 else (-1 if avg_val < 0 else 0)
+
+            matching_sign = [r for r in mentioned if (r[aspect] > 0) == (avg_val > 0)]
+            candidates = matching_sign if matching_sign else mentioned
+            best = max(candidates, key=lambda r: (r["word_count"] or 0))
+            snippet = best["review_text"]
+
+            aspects[aspect] = {"label": label, "score": score, "snippet": snippet}
+
+        places_out.append({
+            "place_id": place["place_id"],
+            "name": place["place_name"],
+            "category": place["category"],
+            "address": place["address"],
+            "lat": float(place["latitude"]) if place["latitude"] is not None else None,
+            "lng": float(place["longitude"]) if place["longitude"] is not None else None,
+            "google_rating": float(place["google_rating"]) if place["google_rating"] is not None else None,
+            "total_reviews": place["total_reviews"],
+            "overall_sentiment": sentiment_label(place["overall_sentiment"]),
+            "aspects": aspects
+        })
+
+    return jsonify(places_out)
 
 @app.route("/api/suburbs")
 def api_suburbs():
