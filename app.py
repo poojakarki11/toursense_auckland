@@ -52,8 +52,7 @@ def api_places():
     place_rows = cur.fetchall()
 
     cur.execute("""
-        SELECT place_id, review_text, review_rating, word_count,
-               service, price_value, facilities_access, environment, product_quality
+        SELECT place_id, service, price_value, facilities_access, environment, product_quality
         FROM reviews;
     """)
     review_rows = cur.fetchall()
@@ -71,21 +70,15 @@ def api_places():
         aspects = {}
 
         for aspect in ASPECT_COLUMNS:
-            mentioned = [r for r in place_reviews if r[aspect] != 0]
+            mentioned = [r[aspect] for r in place_reviews if r[aspect] != 0]
             if not mentioned:
-                aspects[aspect] = {"label": "not mentioned", "score": 0, "snippet": None}
+                aspects[aspect] = {"label": "not mentioned", "score": 0}
                 continue
 
-            avg_val = sum(r[aspect] for r in mentioned) / len(mentioned)
+            avg_val = sum(mentioned) / len(mentioned)
             label = sentiment_label(avg_val)
             score = 1 if avg_val > 0 else (-1 if avg_val < 0 else 0)
-
-            matching_sign = [r for r in mentioned if (r[aspect] > 0) == (avg_val > 0)]
-            candidates = matching_sign if matching_sign else mentioned
-            best = max(candidates, key=lambda r: (r["word_count"] or 0))
-            snippet = best["review_text"]
-
-            aspects[aspect] = {"label": label, "score": score, "snippet": snippet}
+            aspects[aspect] = {"label": label, "score": score}
 
         places_out.append({
             "place_id": place["place_id"],

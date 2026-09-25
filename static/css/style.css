@@ -70,3 +70,51 @@ html, body {
   font-style: italic;
   margin: 4px 0;
 }
+
+.legend {
+  position: absolute;
+  bottom: 20px;
+  left: 10px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  font-size: 0.85em;
+}
+
+.legend strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #0f6e56;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.green { background: #1D9E75; }
+.dot.amber { background: #BA7517; }
+.dot.red { background: #E24B4A; }
+
+.shap-tags { margin-top: 4px; }
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+.tag-positive { background: #DFF5EC; color: #1D9E75; }
+.tag-negative { background: #FBE4E3; color: #E24B4A; }
+.loading-shap { font-size: 0.8rem; color: #999; font-style: italic; }

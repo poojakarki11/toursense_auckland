@@ -19,6 +19,12 @@
 
   <div id="map"></div>
 
+<div class="legend">
+  <strong>Sentiment</strong>
+  <div class="legend-row"><span class="dot green"></span> Positive</div>
+  <div class="legend-row"><span class="dot amber"></span> Neutral</div>
+  <div class="legend-row"><span class="dot red"></span> Negative</div>
+</div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

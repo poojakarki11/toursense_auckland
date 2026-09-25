@@ -15,6 +15,7 @@ L.Icon.Default.mergeOptions({
 
 let allPlaces = [];
 let markerLayer = L.layerGroup().addTo(map);
+const shapCache = {};
 
 function getActiveCategories() {
   const checked = document.querySelectorAll(".category-filter:checked");
@@ -27,8 +28,44 @@ const SENTIMENT_COLOR = {
   negative: "#E24B4A",
 };
 
-function buildPopupContent(place) {
-  let html = `<div class="popup-card">`;
+// reviews/place_sentiment use "facilities_access", the SHAP table uses "facilities"
+const SHAP_ASPECT_KEY = {
+  service: "service",
+  price_value: "price_value",
+  facilities_access: "facilities",
+  environment: "environment",
+  product_quality: "product_quality",
+};
+
+function tagList(words, kind) {
+  if (!words || words.length === 0) return "";
+  const cls = kind === "positive" ? "tag tag-positive" : "tag tag-negative";
+  return words.map((w) => `<span class="${cls}">${w}</span>`).join(" ");
+}
+
+function buildAspectRow(aspectKey, data, shapForAspect) {
+  const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
+  let body = "";
+
+  if (shapForAspect && (shapForAspect.positive || shapForAspect.negative)) {
+    body += `<div class="shap-tags">`;
+    if (shapForAspect.positive) body += tagList(shapForAspect.positive, "positive");
+    if (shapForAspect.negative) body += tagList(shapForAspect.negative, "negative");
+    body += `</div>`;
+  } else {
+    body = `<p class="no-data">Not enough mentions to explain</p>`;
+  }
+
+  return `
+    <div class="aspect-row">
+      <span>${icon} ${aspectKey.replace("_", " ")}</span>
+      ${body}
+    </div>
+  `;
+}
+
+function buildPopupSkeleton(place) {
+  let html = `<div class="popup-card" data-place-id="${place.place_id}">`;
   html += `<h3>${place.name}</h3>`;
   html += `<p class="popup-category">${place.category}</p>`;
   html += `<div class="aspect-list">`;
@@ -43,9 +80,9 @@ function buildPopupContent(place) {
     mentionedAspects.forEach(([aspect, data]) => {
       const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
       html += `
-        <div class="aspect-row">
+        <div class="aspect-row" data-aspect="${aspect}">
           <span>${icon} ${aspect.replace("_", " ")}</span>
-          ${data.snippet ? `<p class="snippet">"${data.snippet}"</p>` : ""}
+          <p class="loading-shap">Loading explanation...</p>
         </div>
       `;
     });
@@ -55,6 +92,53 @@ function buildPopupContent(place) {
   return html;
 }
 
+async function fetchShap(placeId) {
+  if (shapCache[placeId]) return shapCache[placeId];
+  const res = await fetch(`/api/places/${placeId}/shap`);
+  if (!res.ok) {
+    shapCache[placeId] = {};
+    return {};
+  }
+  const data = await res.json();
+  shapCache[placeId] = data;
+  return data;
+}
+
+async function onPopupOpen(e) {
+  const popupEl = e.popup.getElement();
+  const card = popupEl.querySelector(".popup-card");
+  if (!card) return;
+  const placeId = card.getAttribute("data-place-id");
+  const place = allPlaces.find((p) => p.place_id === placeId);
+  if (!place) return;
+
+  const shapData = await fetchShap(placeId);
+
+  card.querySelectorAll(".aspect-row").forEach((row) => {
+    const aspect = row.getAttribute("data-aspect");
+    const data = place.aspects[aspect];
+    const shapKey = SHAP_ASPECT_KEY[aspect];
+    const shapForAspect = shapData[shapKey];
+
+    const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
+    let body = "";
+    if (shapForAspect && (shapForAspect.positive || shapForAspect.negative)) {
+      body += `<div class="shap-tags">`;
+      if (shapForAspect.positive) body += tagList(shapForAspect.positive, "positive");
+      if (shapForAspect.negative) body += tagList(shapForAspect.negative, "negative");
+      body += `</div>`;
+    } else {
+      body = `<p class="no-data">Not enough mentions to explain</p>`;
+    }
+
+    row.innerHTML = `<span>${icon} ${aspect.replace("_", " ")}</span>${body}`;
+  });
+
+  e.popup.update();
+}
+
+map.on("popupopen", onPopupOpen);
+
 function render() {
   const activeCategories = getActiveCategories();
 
@@ -62,6 +146,7 @@ function render() {
 
   allPlaces.forEach((place) => {
     if (!activeCategories.includes(place.category)) return;
+    if (place.lat == null || place.lng == null) return;
 
     const color = SENTIMENT_COLOR[place.overall_sentiment];
 
@@ -73,7 +158,7 @@ function render() {
       weight: 1.5,
     })
       .addTo(markerLayer)
-      .bindPopup(buildPopupContent(place));
+      .bindPopup(buildPopupSkeleton(place));
   });
 }
 
