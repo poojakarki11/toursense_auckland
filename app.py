@@ -1,7 +1,21 @@
 from flask import Flask, render_template, jsonify
-import json
+import psycopg2
+import psycopg2.extras
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
+
+def get_db_connection():
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+    return conn
 
 @app.route("/")
 def index():
@@ -9,9 +23,89 @@ def index():
 
 @app.route("/api/places")
 def api_places():
-    with open("static/data/places.json") as f:
-        places = json.load(f)
-    return jsonify(places)
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT p.place_id, p.place_name, p.category, p.address,
+               p.latitude, p.longitude, p.google_rating, p.total_reviews,
+               ps.overall_sentiment, ps.service_mean, ps.price_value_mean,
+               ps.facilities_access_mean, ps.environment_mean, ps.product_quality_mean
+        FROM places p
+        LEFT JOIN place_sentiment ps ON p.place_id = ps.place_id;
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
+
+@app.route("/api/suburbs")
+def api_suburbs():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT jsonb_build_object(
+            'type', 'FeatureCollection',
+            'features', jsonb_agg(feature)
+        )
+        FROM (
+            SELECT jsonb_build_object(
+                'type', 'Feature',
+                'geometry', ST_AsGeoJSON(s.geom)::jsonb,
+                'properties', jsonb_build_object(
+                    'suburb_id', s.suburb_id,
+                    'sa2_name', s.sa2_name,
+                    'overall_sentiment', ss.overall_sentiment,
+                    'place_count', ss.place_count,
+                    'review_count', ss.review_count,
+                    'service_mean', ss.service_mean,
+                    'price_value_mean', ss.price_value_mean,
+                    'facilities_access_mean', ss.facilities_access_mean,
+                    'environment_mean', ss.environment_mean,
+                    'product_quality_mean', ss.product_quality_mean
+                )
+            ) AS feature
+            FROM suburbs s
+            JOIN suburb_sentiment ss ON s.suburb_id = ss.suburb_id
+        ) sub;
+    """)
+    result = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return jsonify(result)
+
+@app.route("/api/places/<place_id>/shap")
+def api_place_shap(place_id):
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT service_pos, service_neg, price_value_pos, price_value_neg,
+               facilities_pos, facilities_neg, environment_pos, environment_neg,
+               product_quality_pos, product_quality_neg
+        FROM place_shap
+        WHERE place_id = %s;
+    """, (place_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if row is None:
+        return jsonify({}), 404
+
+    def top3(words):
+        if not words:
+            return []
+        sorted_words = sorted(words, key=lambda w: w.get("score", 0), reverse=True)
+        return [w["word"] for w in sorted_words[:3]]
+
+    aspects = ["service", "price_value", "facilities", "environment", "product_quality"]
+    result = {}
+    for aspect in aspects:
+        pos_words = top3(row.get(f"{aspect}_pos"))
+        neg_words = top3(row.get(f"{aspect}_neg"))
+        result[aspect] = {
+            "positive": pos_words if pos_words else None,
+            "negative": neg_words if neg_words else None
+        }
+    return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
