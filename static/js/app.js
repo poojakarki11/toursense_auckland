@@ -104,11 +104,10 @@ async function fetchShap(placeId) {
   return data;
 }
 
-function waitForCard(getPopupEl, tries = 20) {
+function waitForCard(tries = 20) {
   return new Promise((resolve) => {
     function check(remaining) {
-      const popupEl = getPopupEl();
-      const card = popupEl ? popupEl.querySelector(".popup-card") : null;
+      const card = document.querySelector(".leaflet-popup .popup-card");
       if (card || remaining <= 0) {
         resolve(card);
       } else {
@@ -121,7 +120,7 @@ function waitForCard(getPopupEl, tries = 20) {
 
 async function onPopupOpen(e) {
   try {
-    const card = await waitForCard(() => e.popup.getElement());
+    const card = await waitForCard();
     if (!card) {
       console.warn("SHAP popup: card never appeared");
       return;
