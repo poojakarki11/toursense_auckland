@@ -104,9 +104,23 @@ async function fetchShap(placeId) {
   return data;
 }
 
+function waitForCard(popupEl, tries = 10) {
+  return new Promise((resolve) => {
+    function check(remaining) {
+      const card = popupEl ? popupEl.querySelector(".popup-card") : null;
+      if (card || remaining <= 0) {
+        resolve(card);
+      } else {
+        requestAnimationFrame(() => check(remaining - 1));
+      }
+    }
+    check(tries);
+  });
+}
+
 async function onPopupOpen(e) {
   const popupEl = e.popup.getElement();
-  const card = popupEl.querySelector(".popup-card");
+  const card = await waitForCard(popupEl);
   if (!card) return;
   const placeId = card.getAttribute("data-place-id");
   const place = allPlaces.find((p) => p.place_id === placeId);
