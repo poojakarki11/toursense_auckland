@@ -104,9 +104,10 @@ async function fetchShap(placeId) {
   return data;
 }
 
-function waitForCard(popupEl, tries = 10) {
+function waitForCard(getPopupEl, tries = 20) {
   return new Promise((resolve) => {
     function check(remaining) {
+      const popupEl = getPopupEl();
       const card = popupEl ? popupEl.querySelector(".popup-card") : null;
       if (card || remaining <= 0) {
         resolve(card);
@@ -119,36 +120,45 @@ function waitForCard(popupEl, tries = 10) {
 }
 
 async function onPopupOpen(e) {
-  const popupEl = e.popup.getElement();
-  const card = await waitForCard(popupEl);
-  if (!card) return;
-  const placeId = card.getAttribute("data-place-id");
-  const place = allPlaces.find((p) => p.place_id === placeId);
-  if (!place) return;
-
-  const shapData = await fetchShap(placeId);
-
-  card.querySelectorAll(".aspect-row").forEach((row) => {
-    const aspect = row.getAttribute("data-aspect");
-    const data = place.aspects[aspect];
-    const shapKey = SHAP_ASPECT_KEY[aspect];
-    const shapForAspect = shapData[shapKey];
-
-    const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
-    let body = "";
-    if (shapForAspect && (shapForAspect.positive || shapForAspect.negative)) {
-      body += `<div class="shap-tags">`;
-      if (shapForAspect.positive) body += tagList(shapForAspect.positive, "positive");
-      if (shapForAspect.negative) body += tagList(shapForAspect.negative, "negative");
-      body += `</div>`;
-    } else {
-      body = `<p class="no-data">Not enough mentions to explain</p>`;
+  try {
+    const card = await waitForCard(() => e.popup.getElement());
+    if (!card) {
+      console.warn("SHAP popup: card never appeared");
+      return;
+    }
+    const placeId = card.getAttribute("data-place-id");
+    const place = allPlaces.find((p) => p.place_id === placeId);
+    if (!place) {
+      console.warn("SHAP popup: place not found for id", placeId);
+      return;
     }
 
-    row.innerHTML = `<span>${icon} ${aspect.replace("_", " ")}</span>${body}`;
-  });
+    const shapData = await fetchShap(placeId);
 
-  e.popup.update();
+    card.querySelectorAll(".aspect-row").forEach((row) => {
+      const aspect = row.getAttribute("data-aspect");
+      const data = place.aspects[aspect];
+      const shapKey = SHAP_ASPECT_KEY[aspect];
+      const shapForAspect = shapData[shapKey];
+
+      const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
+      let body = "";
+      if (shapForAspect && (shapForAspect.positive || shapForAspect.negative)) {
+        body += `<div class="shap-tags">`;
+        if (shapForAspect.positive) body += tagList(shapForAspect.positive, "positive");
+        if (shapForAspect.negative) body += tagList(shapForAspect.negative, "negative");
+        body += `</div>`;
+      } else {
+        body = `<p class="no-data">Not enough mentions to explain</p>`;
+      }
+
+      row.innerHTML = `<span>${icon} ${aspect.replace("_", " ")}</span>${body}`;
+    });
+
+    e.popup.update();
+  } catch (err) {
+    console.error("SHAP popup update failed:", err);
+  }
 }
 
 map.on("popupopen", onPopupOpen);
