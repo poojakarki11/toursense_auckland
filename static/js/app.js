@@ -14,8 +14,13 @@ L.Icon.Default.mergeOptions({
 });
 
 let allPlaces = [];
-let markerLayer = L.layerGroup().addTo(map);
+let markerLayer = L.layerGroup(); // NOT added to map yet — visibility controlled by zoom
+let suburbGeoLayer = null;
 const shapCache = {};
+
+// Zoom level at which the map switches from suburb polygons to individual place pins.
+// Below this = suburbs (zoomed out); at or above = places (zoomed in).
+const ZOOM_SWITCH = 13;
 
 function getActiveCategories() {
   const checked = document.querySelectorAll(".category-filter:checked");
@@ -27,6 +32,17 @@ const SENTIMENT_COLOR = {
   neutral: "#948C7F",
   negative: "#E24B4A",
 };
+
+const POS_THRESHOLD = 0.15;
+const NEG_THRESHOLD = -0.15;
+
+function sentimentColorFromValue(value) {
+  if (value === null || value === undefined) return SENTIMENT_COLOR.neutral;
+  const v = parseFloat(value);
+  if (v > POS_THRESHOLD) return SENTIMENT_COLOR.positive;
+  if (v < NEG_THRESHOLD) return SENTIMENT_COLOR.negative;
+  return SENTIMENT_COLOR.neutral;
+}
 
 // reviews/place_sentiment use "facilities_access", the SHAP table uses "facilities"
 const SHAP_ASPECT_KEY = {
@@ -128,7 +144,7 @@ async function onPopupOpen(e) {
     const placeId = card.getAttribute("data-place-id");
     const place = allPlaces.find((p) => p.place_id === placeId);
     if (!place) {
-      console.warn("SHAP popup: place not found for id", placeId);
+      // Not every popup belongs to a place (suburb popups don't have aspect rows), so this is normal.
       return;
     }
 
@@ -192,9 +208,69 @@ document.querySelectorAll(".category-filter").forEach((box) => {
   box.addEventListener("change", render);
 });
 
+// --- Suburb polygon layer ---
+
+function buildSuburbPopup(props) {
+  return `
+    <div class="popup-card">
+      <h3>${props.sa2_name}</h3>
+      <p class="popup-category">${props.place_count} place${props.place_count === 1 ? "" : "s"} · ${props.review_count} review${props.review_count === 1 ? "" : "s"}</p>
+    </div>
+  `;
+}
+
+function loadSuburbs() {
+  fetch("/api/suburbs")
+    .then((res) => res.json())
+    .then((geojson) => {
+      suburbGeoLayer = L.geoJSON(geojson, {
+        style: (feature) => ({
+          fillColor: sentimentColorFromValue(feature.properties.overall_sentiment),
+          fillOpacity: 0.55,
+          color: "#ffffff",
+          weight: 1,
+        }),
+        onEachFeature: (feature, layer) => {
+          layer.bindPopup(buildSuburbPopup(feature.properties));
+          layer.on("click", () => {
+            map.fitBounds(layer.getBounds());
+          });
+          layer.on("mouseover", () => layer.setStyle({ fillOpacity: 0.75 }));
+          layer.on("mouseout", () => layer.setStyle({ fillOpacity: 0.55 }));
+        },
+      });
+      updateLayerVisibility();
+    })
+    .catch((err) => console.error("Failed to load suburbs:", err));
+}
+
+function updateLayerVisibility() {
+  const zoom = map.getZoom();
+  const showSuburbs = zoom < ZOOM_SWITCH;
+
+  if (suburbGeoLayer) {
+    if (showSuburbs && !map.hasLayer(suburbGeoLayer)) {
+      map.addLayer(suburbGeoLayer);
+    } else if (!showSuburbs && map.hasLayer(suburbGeoLayer)) {
+      map.removeLayer(suburbGeoLayer);
+    }
+  }
+
+  if (showSuburbs && map.hasLayer(markerLayer)) {
+    map.removeLayer(markerLayer);
+  } else if (!showSuburbs && !map.hasLayer(markerLayer)) {
+    map.addLayer(markerLayer);
+  }
+}
+
+map.on("zoomend", updateLayerVisibility);
+
 fetch("/api/places")
   .then((response) => response.json())
   .then((places) => {
     allPlaces = places;
     render();
+    updateLayerVisibility();
   });
+
+loadSuburbs();
