@@ -24,7 +24,7 @@ function getActiveCategories() {
 
 const SENTIMENT_COLOR = {
   positive: "#1D9E75",
-  neutral: "#BA7517",
+  neutral: "#948C7F",
   negative: "#E24B4A",
 };
 
