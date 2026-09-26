@@ -154,7 +154,10 @@ async function onPopupOpen(e) {
       row.innerHTML = `<span>${icon} ${aspect.replace("_", " ")}</span>${body}`;
     });
 
-    e.popup.update();
+    // Note: intentionally NOT calling e.popup.update() here —
+    // Leaflet's Popup.update() calls _updateContent(), which resets
+    // the popup's innerHTML back to its original bindPopup() string,
+    // wiping out the SHAP tags we just inserted above.
   } catch (err) {
     console.error("SHAP popup update failed:", err);
   }
