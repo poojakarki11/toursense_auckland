@@ -14,7 +14,10 @@ L.Icon.Default.mergeOptions({
 });
 
 let allPlaces = [];
-let markerLayer = L.layerGroup(); // NOT added to map yet — visibility controlled by zoom
+let markerLayer = L.markerClusterGroup({
+  maxClusterRadius: 50,
+  spiderfyOnMaxZoom: true,
+}); // NOT added to map yet — visibility controlled by zoom
 let suburbGeoLayer = null;
 const shapCache = {};
 
