@@ -12,14 +12,18 @@
 <body>
 
   <div class="header-bar">
-    <h1>Welcome to TourSense</h1>
-    <div id="filters">
-      <label><input type="checkbox" class="category-filter" value="park" checked> Park</label>
-      <label><input type="checkbox" class="category-filter" value="accommodation" checked> Accommodation</label>
-      <label><input type="checkbox" class="category-filter" value="restaurant" checked> Restaurant</label>
-      <label><input type="checkbox" class="category-filter" value="librarymuseum" checked> Library & museum</label>
-    </div>
+  <h1>Welcome to TourSense</h1>
+  <div id="filters">
+    <label><input type="checkbox" class="category-filter" value="park" checked> Park</label>
+    <label><input type="checkbox" class="category-filter" value="accommodation" checked> Accommodation</label>
+    <label><input type="checkbox" class="category-filter" value="restaurant" checked> Restaurant</label>
+    <label><input type="checkbox" class="category-filter" value="librarymuseum" checked> Library & museum</label>
   </div>
+  <div id="search-box">
+    <input id="search-input" type="text" placeholder="Search places..." autocomplete="off">
+    <ul id="search-results"></ul>
+  </div>
+</div>
 
   <div id="map"></div>
 

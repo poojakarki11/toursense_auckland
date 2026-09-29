@@ -20,6 +20,7 @@ let markerLayer = L.markerClusterGroup({
 }); // NOT added to map yet — visibility controlled by zoom
 let suburbGeoLayer = null;
 const shapCache = {};
+let markerById = {};
 
 // Zoom level at which the map switches from suburb polygons to individual place pins.
 // Below this = suburbs (zoomed out); at or above = places (zoomed in).
@@ -188,6 +189,7 @@ function render() {
   const activeCategories = getActiveCategories();
 
   markerLayer.clearLayers();
+  markerById = {};
 
   allPlaces.forEach((place) => {
     if (!activeCategories.includes(place.category)) return;
@@ -195,7 +197,7 @@ function render() {
 
     const color = SENTIMENT_COLOR[place.overall_sentiment];
 
-    L.circleMarker([place.lat, place.lng], {
+    const marker = L.circleMarker([place.lat, place.lng], {
       radius: 9,
       color: color,
       fillColor: color,
@@ -203,7 +205,10 @@ function render() {
       weight: 1.5,
     })
       .addTo(markerLayer)
-      .bindPopup(buildPopupSkeleton(place));
+      .bindPopup(buildPopupSkeleton(place))
+      .bindTooltip(place.name, { direction: "top", offset: [0, -8] });
+
+    markerById[place.place_id] = marker;
   });
 }
 
@@ -267,6 +272,100 @@ function updateLayerVisibility() {
 }
 
 map.on("zoomend", updateLayerVisibility);
+
+// --- Search bar (autocomplete dropdown) ---
+
+const searchInput = document.getElementById("search-input");
+const searchResults = document.getElementById("search-results");
+
+const CATEGORY_LABEL = {
+  park: "Park",
+  accommodation: "Accommodation",
+  restaurant: "Restaurant",
+  librarymuseum: "Library & museum",
+};
+
+function hideSearchResults() {
+  searchResults.innerHTML = "";
+  searchResults.style.display = "none";
+}
+
+function goToPlace(place) {
+  // Make sure the place's category is switched on, otherwise it has no marker
+  const box = document.querySelector(`.category-filter[value="${place.category}"]`);
+  if (box && !box.checked) {
+    box.checked = true;
+    render();
+  }
+
+  // Zoom in past the suburb/place switch, then show the place layer
+  map.setView([place.lat, place.lng], 17, { animate: false });
+  updateLayerVisibility();
+
+  const marker = markerById[place.place_id];
+  if (marker) {
+    markerLayer.zoomToShowLayer(marker, () => marker.openPopup());
+  }
+
+  searchInput.value = place.name;
+  hideSearchResults();
+}
+
+function showSearchResults(query) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) {
+    hideSearchResults();
+    return;
+  }
+
+  const matches = allPlaces
+    .filter((p) => p.lat != null && p.lng != null && p.name.toLowerCase().includes(q))
+    .slice(0, 8);
+
+  searchResults.innerHTML = "";
+
+  if (matches.length === 0) {
+    const li = document.createElement("li");
+    li.className = "search-empty";
+    li.textContent = "No matching places";
+    searchResults.appendChild(li);
+  } else {
+    matches.forEach((place) => {
+      const li = document.createElement("li");
+      li.className = "search-item";
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "search-name";
+      nameEl.textContent = place.name;
+
+      const catEl = document.createElement("span");
+      catEl.className = "search-cat";
+      catEl.textContent = CATEGORY_LABEL[place.category] || place.category;
+
+      li.appendChild(nameEl);
+      li.appendChild(catEl);
+      li.addEventListener("click", () => goToPlace(place));
+      searchResults.appendChild(li);
+    });
+  }
+  searchResults.style.display = "block";
+}
+
+searchInput.addEventListener("input", () => showSearchResults(searchInput.value));
+
+searchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    hideSearchResults();
+  } else if (e.key === "Enter") {
+    const first = searchResults.querySelector(".search-item");
+    if (first) first.click();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!document.getElementById("search-box").contains(e.target)) hideSearchResults();
+});
+
 
 fetch("/api/places")
   .then((response) => response.json())
