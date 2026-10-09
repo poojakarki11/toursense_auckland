@@ -63,22 +63,31 @@ function tagList(words, kind) {
   return words.map((w) => `<span class="${cls}">${w}</span>`).join(" ");
 }
 
-function buildAspectRow(aspectKey, data, shapForAspect) {
-  const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
-  let body = "";
+function shapBody(data, shapForAspect) {
+  if (!shapForAspect) return `<p class="no-data" style="margin:2px 0">Not enough mentions to explain</p>`;
 
-  if (shapForAspect && (shapForAspect.positive || shapForAspect.negative)) {
-    body += `<div class="shap-tags">`;
-    if (shapForAspect.positive) body += tagList(shapForAspect.positive, "positive");
-    if (shapForAspect.negative) body += tagList(shapForAspect.negative, "negative");
-    body += `</div>`;
-  } else {
-    body = `<p class="no-data">Not enough mentions to explain</p>`;
+  const snippet =
+    data.score === 1 ? shapForAspect.positive_snippet :
+    data.score === -1 ? shapForAspect.negative_snippet : null;
+
+  if (snippet) {
+    const colour = data.score === 1 ? "#c8f2c2" : "#f8c4c4";
+    const text = snippet.text.replace(
+      "<mark>",
+      `<mark style="background:${colour};padding:0 2px;border-radius:3px">`
+    );
+    return `<p class="shap-snippet" style="font-style:italic;margin:2px 0">"${text}"</p>`;
   }
 
+  return `<p class="no-data" style="margin:2px 0">Not enough mentions to explain</p>`;
+}
+
+function buildAspectRow(aspectKey, data, shapForAspect) {
+  const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
+  const body = shapBody(data, shapForAspect);
   return `
     <div class="aspect-row">
-      <span>${icon} ${aspectKey.replace("_", " ")}</span>
+      <span>${icon} ${aspectLabel(aspectKey)}</span>
       ${body}
     </div>
   `;
@@ -87,7 +96,7 @@ function buildAspectRow(aspectKey, data, shapForAspect) {
 function buildPopupSkeleton(place) {
   let html = `<div class="popup-card" data-place-id="${place.place_id}">`;
   html += `<h3>${place.name}</h3>`;
-  html += `<p class="popup-category">${place.category}</p>`;
+  html += `<p class="popup-category">${categoryLabel(place.category)}</p>`;
   html += `<div class="aspect-list">`;
 
   const mentionedAspects = Object.entries(place.aspects).filter(
@@ -95,13 +104,13 @@ function buildPopupSkeleton(place) {
   );
 
   if (mentionedAspects.length === 0) {
-    html += `<p class="no-data">No aspect data available yet.</p>`;
+    html += `<p class="no-data" style="margin:2px 0">No aspect data available yet.</p>`;
   } else {
     mentionedAspects.forEach(([aspect, data]) => {
       const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
       html += `
         <div class="aspect-row" data-aspect="${aspect}">
-          <span>${icon} ${aspect.replace("_", " ")}</span>
+          <span>${icon} ${aspectLabel(aspect)}</span>
           <p class="loading-shap">Loading explanation...</p>
         </div>
       `;
@@ -161,17 +170,8 @@ async function onPopupOpen(e) {
       const shapForAspect = shapData[shapKey];
 
       const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
-      let body = "";
-      if (shapForAspect && (shapForAspect.positive || shapForAspect.negative)) {
-        body += `<div class="shap-tags">`;
-        if (shapForAspect.positive) body += tagList(shapForAspect.positive, "positive");
-        if (shapForAspect.negative) body += tagList(shapForAspect.negative, "negative");
-        body += `</div>`;
-      } else {
-        body = `<p class="no-data">Not enough mentions to explain</p>`;
-      }
-
-      row.innerHTML = `<span>${icon} ${aspect.replace("_", " ")}</span>${body}`;
+      const body = shapBody(data, shapForAspect);
+      row.innerHTML = `<span>${icon} ${aspectLabel(aspect)}</span>${body}`;
     });
 
     // Note: intentionally NOT calling e.popup.update() here —
@@ -376,3 +376,25 @@ fetch("/api/places")
   });
 
 loadSuburbs();
+
+function aspectLabel(key) {
+  const labels = {
+    service: "Service",
+    price_value: "Price & Value",
+    facilities_access: "Facilities & Access",
+    environment: "Environment",
+    product_quality: "Product Quality",
+  };
+  return labels[key] || key;
+}
+
+function categoryLabel(cat) {
+  const labels = {
+    park: "Park",
+    accommodation: "Accommodation",
+    restaurant: "Restaurant",
+    librarymuseum: "Library & Museum",
+  };
+  const k = (cat || "").toLowerCase().replace(/[^a-z]/g, "");
+  return labels[k] || cat;
+}

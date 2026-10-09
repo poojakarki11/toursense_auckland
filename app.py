@@ -1,3 +1,5 @@
+import html
+from shap_utils import pick_word, make_snippet
 from flask import Flask, render_template, jsonify
 import psycopg2
 import psycopg2.extras
@@ -142,25 +144,58 @@ def api_place_shap(place_id):
         WHERE place_id = %s;
     """, (place_id,))
     row = cur.fetchone()
+    cur.execute("""
+        SELECT review_id, review_text, service, price_value, facilities_access, environment, product_quality
+        FROM reviews
+        WHERE place_id = %s;
+    """, (place_id,))
+    reviews = cur.fetchall()
     cur.close()
     conn.close()
     if row is None:
         return jsonify({}), 404
 
-    def top3(words):
-        if not words:
-            return []
-        sorted_words = sorted(words, key=lambda w: w.get("score", 0), reverse=True)
-        return [w["word"] for w in sorted_words[:3]]
+    def sort_words(words):
+        return sorted(words or [], key=lambda w: w.get("score", 0), reverse=True)
 
-    aspects = ["service", "price_value", "facilities", "environment", "product_quality"]
+    def top3(words):
+        return [w["word"] for w in sort_words(words)[:3]]
+
+    used_reviews = set()
+
+    def find_snippet(words, review_col, target):
+        # first pass: only reviews not used yet; second pass: any review
+        for prefer_new in (True, False):
+            for item in sort_words(words):
+                word = pick_word([item])
+                if not word:
+                    continue
+                for r in reviews:
+                    if prefer_new and r["review_id"] in used_reviews:
+                        continue
+                    if r[review_col] == target and r["review_text"]:
+                        snippet = make_snippet(html.escape(r["review_text"]), word)
+                        if snippet:
+                            used_reviews.add(r["review_id"])
+                            return {"word": word, "text": snippet}
+        return None
+    # SHAP column name -> reviews column name
+    aspects = {
+        "service": "service",
+        "price_value": "price_value",
+        "facilities": "facilities_access",
+        "environment": "environment",
+        "product_quality": "product_quality",
+    }
     result = {}
-    for aspect in aspects:
-        pos_words = top3(row.get(f"{aspect}_pos"))
-        neg_words = top3(row.get(f"{aspect}_neg"))
-        result[aspect] = {
-            "positive": pos_words if pos_words else None,
-            "negative": neg_words if neg_words else None
+    for shap_name, review_col in aspects.items():
+        pos_list = row.get(f"{shap_name}_pos")
+        neg_list = row.get(f"{shap_name}_neg")
+        result[shap_name] = {
+            "positive": top3(pos_list) or None,
+            "negative": top3(neg_list) or None,
+            "positive_snippet": find_snippet(pos_list, review_col, 1),
+            "negative_snippet": find_snippet(neg_list, review_col, -1),
         }
     return jsonify(result)
 
