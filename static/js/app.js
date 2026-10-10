@@ -19,12 +19,15 @@ let markerLayer = L.markerClusterGroup({
   spiderfyOnMaxZoom: true,
 }); // NOT added to map yet — visibility controlled by zoom
 let suburbGeoLayer = null;
-const shapCache = {};
+const shapCache = {}; // placeId -> Promise of SHAP data (only successful results are kept)
 let markerById = {};
 
 // Zoom level at which the map switches from suburb polygons to individual place pins.
 // Below this = suburbs (zoomed out); at or above = places (zoomed in).
 const ZOOM_SWITCH = 13;
+
+// How long to wait for an explanation before showing a fallback message (ms)
+const SHAP_TIMEOUT_MS = 15000;
 
 function getActiveCategories() {
   const checked = document.querySelectorAll(".category-filter:checked");
@@ -57,14 +60,17 @@ const SHAP_ASPECT_KEY = {
   product_quality: "product_quality",
 };
 
-function tagList(words, kind) {
-  if (!words || words.length === 0) return "";
-  const cls = kind === "positive" ? "tag tag-positive" : "tag tag-negative";
-  return words.map((w) => `<span class="${cls}">${w}</span>`).join(" ");
+function aspectIcon(data) {
+  return data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
 }
 
 function shapBody(data, shapForAspect) {
-  if (!shapForAspect) return `<p class="no-data" style="margin:2px 0">Not enough mentions to explain</p>`;
+  if (data.score === 0) {
+    return `<p class="no-data" style="margin:2px 0">Mixed or neutral mentions – no single word stands out</p>`;
+  }
+  if (!shapForAspect) {
+    return `<p class="no-data" style="margin:2px 0">Not enough mentions to explain</p>`;
+  }
 
   const snippet =
     data.score === 1 ? shapForAspect.positive_snippet :
@@ -82,17 +88,6 @@ function shapBody(data, shapForAspect) {
   return `<p class="no-data" style="margin:2px 0">Not enough mentions to explain</p>`;
 }
 
-function buildAspectRow(aspectKey, data, shapForAspect) {
-  const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
-  const body = shapBody(data, shapForAspect);
-  return `
-    <div class="aspect-row">
-      <span>${icon} ${aspectLabel(aspectKey)}</span>
-      ${body}
-    </div>
-  `;
-}
-
 function buildPopupSkeleton(place) {
   let html = `<div class="popup-card" data-place-id="${place.place_id}">`;
   html += `<h3>${place.name}</h3>`;
@@ -107,10 +102,9 @@ function buildPopupSkeleton(place) {
     html += `<p class="no-data" style="margin:2px 0">No aspect data available yet.</p>`;
   } else {
     mentionedAspects.forEach(([aspect, data]) => {
-      const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
       html += `
         <div class="aspect-row" data-aspect="${aspect}">
-          <span>${icon} ${aspectLabel(aspect)}</span>
+          <span>${aspectIcon(data)} ${aspectLabel(aspect)}</span>
           <p class="loading-shap">Loading explanation...</p>
         </div>
       `;
@@ -121,22 +115,35 @@ function buildPopupSkeleton(place) {
   return html;
 }
 
-async function fetchShap(placeId) {
+// Fetch SHAP data for a place, with a timeout.
+// Failures are NOT cached, so the next click tries again instead of being stuck.
+function fetchShap(placeId) {
   if (shapCache[placeId]) return shapCache[placeId];
-  const res = await fetch(`/api/places/${placeId}/shap`);
-  if (!res.ok) {
-    shapCache[placeId] = {};
-    return {};
-  }
-  const data = await res.json();
-  shapCache[placeId] = data;
-  return data;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SHAP_TIMEOUT_MS);
+
+  const request = fetch(`/api/places/${placeId}/shap`, { signal: controller.signal })
+    .then((res) => {
+      if (!res.ok) throw new Error(`SHAP request failed: ${res.status}`);
+      return res.json();
+    })
+    .catch((err) => {
+      delete shapCache[placeId]; // allow a retry next time
+      throw err;
+    })
+    .finally(() => clearTimeout(timer));
+
+  shapCache[placeId] = request;
+  return request;
 }
 
-function waitForCard(tries = 20) {
+// Find the popup card inside THIS popup (not any popup on the page)
+function waitForCard(popup, tries = 20) {
   return new Promise((resolve) => {
     function check(remaining) {
-      const card = document.querySelector(".leaflet-popup .popup-card");
+      const el = popup.getElement();
+      const card = el ? el.querySelector(".popup-card") : null;
       if (card || remaining <= 0) {
         resolve(card);
       } else {
@@ -148,38 +155,52 @@ function waitForCard(tries = 20) {
 }
 
 async function onPopupOpen(e) {
-  try {
-    const card = await waitForCard();
-    if (!card) {
-      console.warn("SHAP popup: card never appeared");
-      return;
-    }
-    const placeId = card.getAttribute("data-place-id");
-    const place = allPlaces.find((p) => p.place_id === placeId);
-    if (!place) {
-      // Not every popup belongs to a place (suburb popups don't have aspect rows), so this is normal.
-      return;
-    }
+  const card = await waitForCard(e.popup);
+  if (!card) return;
 
+  const placeId = card.getAttribute("data-place-id");
+  if (!placeId) return; // suburb or other popup without aspect rows
+
+  const place = allPlaces.find((p) => p.place_id === placeId);
+  if (!place) return;
+
+  const rows = card.querySelectorAll(".aspect-row");
+  if (rows.length === 0) return;
+
+  try {
     const shapData = await fetchShap(placeId);
 
-    card.querySelectorAll(".aspect-row").forEach((row) => {
+    rows.forEach((row) => {
       const aspect = row.getAttribute("data-aspect");
       const data = place.aspects[aspect];
-      const shapKey = SHAP_ASPECT_KEY[aspect];
-      const shapForAspect = shapData[shapKey];
-
-      const icon = data.score === 1 ? "🟢" : data.score === -1 ? "🔴" : "⚪";
-      const body = shapBody(data, shapForAspect);
-      row.innerHTML = `<span>${icon} ${aspectLabel(aspect)}</span>${body}`;
+      const shapForAspect = shapData[SHAP_ASPECT_KEY[aspect]];
+      row.innerHTML = `<span>${aspectIcon(data)} ${aspectLabel(aspect)}</span>${shapBody(data, shapForAspect)}`;
     });
 
     // Note: intentionally NOT calling e.popup.update() here —
-    // Leaflet's Popup.update() calls _updateContent(), which resets
-    // the popup's innerHTML back to its original bindPopup() string,
-    // wiping out the SHAP tags we just inserted above.
+    // Leaflet's Popup.update() resets the popup's innerHTML back to the
+    // original bindPopup() string, wiping out the explanations inserted above.
   } catch (err) {
     console.error("SHAP popup update failed:", err);
+    const message =
+      err.name === "AbortError"
+        ? "Explanation is taking too long – close and reopen to try again."
+        : "Explanation unavailable right now – close and reopen to try again.";
+    rows.forEach((row) => {
+      const aspect = row.getAttribute("data-aspect");
+      const data = place.aspects[aspect];
+      if (data.score === 0) {
+        // Neutral aspects never need SHAP data, so show their normal message
+        row.innerHTML = `<span>${aspectIcon(data)} ${aspectLabel(aspect)}</span>${shapBody(data, null)}`;
+        return;
+      }
+      const loading = row.querySelector(".loading-shap");
+      if (loading) {
+        loading.className = "no-data";
+        loading.style.margin = "2px 0";
+        loading.textContent = message;
+      }
+    });
   }
 }
 
@@ -195,7 +216,7 @@ function render() {
     if (!activeCategories.includes(place.category)) return;
     if (place.lat == null || place.lng == null) return;
 
-    const color = SENTIMENT_COLOR[place.overall_sentiment];
+    const color = SENTIMENT_COLOR[place.overall_sentiment] || SENTIMENT_COLOR.neutral;
 
     const marker = L.circleMarker([place.lat, place.lng], {
       radius: 9,
@@ -208,6 +229,12 @@ function render() {
       .bindPopup(buildPopupSkeleton(place))
       .bindTooltip(place.name, { direction: "top", offset: [0, -8] });
 
+    // Start loading the explanation as soon as the user hovers, so it is
+    // usually ready by the time they click.
+    marker.on("mouseover", () => {
+      fetchShap(place.place_id).catch(() => {});
+    });
+
     markerById[place.place_id] = marker;
   });
 }
@@ -218,18 +245,16 @@ document.querySelectorAll(".category-filter").forEach((box) => {
 
 // --- Suburb polygon layer ---
 
-function buildSuburbPopup(props) {
-  return `
-    <div class="popup-card">
-      <h3>${props.sa2_name}</h3>
-      <p class="popup-category">${props.place_count} place${props.place_count === 1 ? "" : "s"} · ${props.review_count} review${props.review_count === 1 ? "" : "s"}</p>
-    </div>
-  `;
+function suburbTooltip(props) {
+  return `<strong>${props.sa2_name}</strong><br>${props.place_count} place${props.place_count === 1 ? "" : "s"} · ${props.review_count} review${props.review_count === 1 ? "" : "s"}<br><em>Click to see places</em>`;
 }
 
 function loadSuburbs() {
   fetch("/api/suburbs")
-    .then((res) => res.json())
+    .then((res) => {
+      if (!res.ok) throw new Error(`Suburbs request failed: ${res.status}`);
+      return res.json();
+    })
     .then((geojson) => {
       suburbGeoLayer = L.geoJSON(geojson, {
         style: (feature) => ({
@@ -239,9 +264,12 @@ function loadSuburbs() {
           weight: 1,
         }),
         onEachFeature: (feature, layer) => {
-          layer.bindPopup(buildSuburbPopup(feature.properties));
+          layer.bindTooltip(suburbTooltip(feature.properties), { sticky: true });
           layer.on("click", () => {
-            map.fitBounds(layer.getBounds());
+            // Zoom into the suburb, and always far enough to switch to place pins
+            const bounds = layer.getBounds();
+            const zoom = Math.max(map.getBoundsZoom(bounds), ZOOM_SWITCH);
+            map.setView(bounds.getCenter(), zoom);
           });
           layer.on("mouseover", () => layer.setStyle({ fillOpacity: 0.75 }));
           layer.on("mouseout", () => layer.setStyle({ fillOpacity: 0.55 }));
@@ -251,6 +279,21 @@ function loadSuburbs() {
     })
     .catch((err) => console.error("Failed to load suburbs:", err));
 }
+
+// --- Hint shown while zoomed out, so users know how to reach the places ---
+
+const ZoomHint = L.Control.extend({
+  options: { position: "bottomright" },
+  onAdd: function () {
+    const div = L.DomUtil.create("div", "zoom-hint");
+    div.innerHTML = "🔍 Zoom in or click a suburb to see individual places";
+    div.style.cssText =
+      "background:#ffffff;padding:8px 12px;border-radius:8px;" +
+      "box-shadow:0 1px 4px rgba(0,0,0,0.25);font-size:14px;color:#333;";
+    return div;
+  },
+});
+const zoomHint = new ZoomHint();
 
 function updateLayerVisibility() {
   const zoom = map.getZoom();
@@ -269,9 +312,17 @@ function updateLayerVisibility() {
   } else if (!showSuburbs && !map.hasLayer(markerLayer)) {
     map.addLayer(markerLayer);
   }
+
+  // Show the hint only while place pins are hidden
+  if (showSuburbs && !zoomHint._map) {
+    zoomHint.addTo(map);
+  } else if (!showSuburbs && zoomHint._map) {
+    zoomHint.remove();
+  }
 }
 
 map.on("zoomend", updateLayerVisibility);
+updateLayerVisibility(); // show the hint straight away on first load
 
 // --- Search bar (autocomplete dropdown) ---
 
@@ -291,24 +342,34 @@ function hideSearchResults() {
 }
 
 function goToPlace(place) {
-  // Make sure the place's category is switched on, otherwise it has no marker
-  const box = document.querySelector(`.category-filter[value="${place.category}"]`);
-  if (box && !box.checked) {
-    box.checked = true;
-    render();
-  }
-
-  // Zoom in past the suburb/place switch, then show the place layer
-  map.setView([place.lat, place.lng], 17, { animate: false });
-  updateLayerVisibility();
-
-  const marker = markerById[place.place_id];
-  if (marker) {
-    markerLayer.zoomToShowLayer(marker, () => marker.openPopup());
-  }
-
+  // Close the suggestions first, so they never stay open even if something below fails
   searchInput.value = place.name;
   hideSearchResults();
+  searchInput.blur();
+
+  try {
+    // Make sure the place's category is switched on, otherwise it has no marker
+    const box = document.querySelector(`.category-filter[value="${place.category}"]`);
+    if (box && !box.checked) {
+      box.checked = true;
+      render();
+    }
+
+    // Zoom in past the suburb/place switch, then show the place layer
+    map.closePopup();
+    map.setView([place.lat, place.lng], 17, { animate: false });
+    updateLayerVisibility();
+
+    // Open the popup directly on the map at the place's location.
+    // This works whether or not the marker is inside a cluster, which is
+    // what caused the intermittent Leaflet error with zoomToShowLayer.
+    L.popup({ offset: [0, -6] })
+      .setLatLng([place.lat, place.lng])
+      .setContent(buildPopupSkeleton(place))
+      .openOn(map);
+  } catch (err) {
+    console.error("Search selection failed:", err);
+  }
 }
 
 function showSearchResults(query) {
@@ -344,7 +405,11 @@ function showSearchResults(query) {
 
       li.appendChild(nameEl);
       li.appendChild(catEl);
-      li.addEventListener("click", () => goToPlace(place));
+      // mousedown (not click) so it fires before the input loses focus
+      li.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        goToPlace(place);
+      });
       searchResults.appendChild(li);
     });
   }
@@ -357,8 +422,12 @@ searchInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     hideSearchResults();
   } else if (e.key === "Enter") {
-    const first = searchResults.querySelector(".search-item");
-    if (first) first.click();
+    e.preventDefault();
+    const q = searchInput.value.trim().toLowerCase();
+    const first = allPlaces.find(
+      (p) => p.lat != null && p.lng != null && q.length >= 2 && p.name.toLowerCase().includes(q)
+    );
+    if (first) goToPlace(first);
   }
 });
 
@@ -366,14 +435,17 @@ document.addEventListener("click", (e) => {
   if (!document.getElementById("search-box").contains(e.target)) hideSearchResults();
 });
 
-
 fetch("/api/places")
-  .then((response) => response.json())
+  .then((response) => {
+    if (!response.ok) throw new Error(`Places request failed: ${response.status}`);
+    return response.json();
+  })
   .then((places) => {
     allPlaces = places;
     render();
     updateLayerVisibility();
-  });
+  })
+  .catch((err) => console.error("Failed to load places:", err));
 
 loadSuburbs();
 
