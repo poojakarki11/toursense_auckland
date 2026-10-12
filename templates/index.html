@@ -1,38 +1,57 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TourSense</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 </head>
 <body>
 
-  <div class="header-bar">
-  <h1>Welcome to TourSense</h1>
-  <div id="filters">
-    <label><input type="checkbox" class="category-filter" value="park" checked> Park</label>
-    <label><input type="checkbox" class="category-filter" value="accommodation" checked> Accommodation</label>
-    <label><input type="checkbox" class="category-filter" value="restaurant" checked> Restaurant</label>
-    <label><input type="checkbox" class="category-filter" value="librarymuseum" checked> Library & museum</label>
-  </div>
-  <div id="search-box">
-    <input id="search-input" type="text" placeholder="Search places..." autocomplete="off">
-    <ul id="search-results"></ul>
-  </div>
-</div>
+  <!-- Main area: side panel + map -->
+  <main class="main">
+    <aside id="place-panel" aria-live="polite">
+      <button id="panel-close" class="panel-close" type="button" aria-label="Close details">×</button>
+      <div id="panel-content"></div>
+    </aside>
 
-  <div id="map"></div>
+    <div class="map-wrap">
+      <div id="map"></div>
 
-<div class="legend">
-  <strong>Sentiment</strong>
-  <div class="legend-row"><span class="dot green"></span> Positive</div>
-  <div class="legend-row"><span class="dot amber"></span> Neutral</div>
-  <div class="legend-row"><span class="dot red"></span> Negative</div>
-</div>
+      <!-- Floating controls over the map: search + about, then category chips -->
+      <div class="map-overlay">
+        <div class="search-row">
+          <div id="search-box">
+            <span class="search-icon" aria-hidden="true">🔍</span>
+            <input id="search-input" type="text" placeholder="Search places in Auckland..." autocomplete="off" aria-label="Search places">
+            <ul id="search-results"></ul>
+          </div>
+          <button id="about-btn" class="pill-btn" type="button">ⓘ About</button>
+        </div>
+
+        <nav class="chip-bar" id="filters" aria-label="Filter by category">
+          <button type="button" id="chip-all" class="chip active">All places</button>
+          <label class="chip"><input type="checkbox" class="category-filter" value="park"><span>🌳 Parks</span></label>
+          <label class="chip"><input type="checkbox" class="category-filter" value="accommodation"><span>🛏️ Accommodation</span></label>
+          <label class="chip"><input type="checkbox" class="category-filter" value="restaurant"><span>🍴 Restaurants</span></label>
+          <label class="chip"><input type="checkbox" class="category-filter" value="librarymuseum"><span>🏛️ Libraries &amp; Museums</span></label>
+        </nav>
+      </div>
+
+      <div class="legend">
+        <strong>Sentiment</strong>
+        <div class="legend-row"><span class="dot green"></span> Positive</div>
+        <div class="legend-row"><span class="dot amber"></span> Neutral</div>
+        <div class="legend-row"><span class="dot red"></span> Negative</div>
+      </div>
+    </div>
+  </main>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
