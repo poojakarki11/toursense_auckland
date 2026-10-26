@@ -90,6 +90,7 @@ toursense_auckland/
 ├── app.py                 Flask app and API routes
 ├── shap_utils.py          SHAP word filtering and snippet helpers
 ├── static/                JavaScript, CSS, icons
+│   └── data/places.json  Sample data used in early development
 ├── templates/             HTML templates
 ├── requirements.txt       Python dependencies for the web app
 ├── pipeline/              Data and modelling notebooks, in run order
